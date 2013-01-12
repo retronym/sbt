@@ -139,8 +139,8 @@ object CacheIvy
 	implicit lazy val chainedIC: InputCache[ChainedResolver] = InputCache.lzy(wrapIn)
 	implicit lazy val resolverIC: InputCache[Resolver] =
 		unionInputCache[Resolver, ChainedResolver :+: JavaNet1Repository :+: MavenRepository :+: FileRepository :+: URLRepository :+: SshRepository :+: SftpRepository :+: RawRepository :+: HNil]
-	implicit def moduleIC: InputCache[ModuleID] = wrapIn
-	implicitly[InputCache[Seq[Configuration]]]
+	implicit def moduleIC: InputCache[ModuleID] = wrapIn2[ModuleID].apply
+	//implicitly[InputCache[Seq[Configuration]]]
 
 	object L2 {
 		implicit def updateConfToHL = (u: UpdateConfiguration) => u.retrieve :+: u.missingOk :+: HNil
@@ -161,9 +161,9 @@ object CacheIvy
 	implicit def pomIC: InputCache[PomConfiguration] = wrapIn
 	implicit def ivyFileIC: InputCache[IvyFileConfiguration] = wrapIn
 	implicit def connectionIC: InputCache[SshConnection] = wrapIn
-	implicit def artifactIC: InputCache[Artifact] = wrapIn
-	implicit def exclusionIC: InputCache[ExclusionRule] = wrapIn
-	implicit def crossVersionIC: InputCache[CrossVersion] = wrapIn
+	implicit def artifactIC: InputCache[Artifact] = wrapIn2[Artifact].apply
+	implicit def exclusionIC: InputCache[ExclusionRule] = wrapIn2[ExclusionRule].apply
+	implicit def crossVersionIC: InputCache[CrossVersion] = wrapIn2[CrossVersion].apply
 /*	implicit def publishConfIC: InputCache[PublishConfiguration] = wrapIn
 	implicit def deliverConfIC: InputCache[DeliverConfiguration] = wrapIn*/
 
@@ -190,7 +190,7 @@ object CacheIvy
 	implicit def patternsIC: InputCache[Patterns] = wrapIn
 	implicit def fileConfIC: InputCache[FileConfiguration] = wrapIn
 	implicit def extIvyIC: InputCache[ExternalIvyConfiguration] = wrapIn
-	implicit def confIC: InputCache[Configuration] = wrapIn
+	implicit def confIC: InputCache[Configuration] = wrapIn2[Configuration].apply
 
 	implicit def authIC: InputCache[SshAuthentication] =
 		unionInputCache[SshAuthentication, PasswordAuthentication :+: KeyFileAuthentication :+: HNil]

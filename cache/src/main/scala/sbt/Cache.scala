@@ -150,7 +150,13 @@ trait BasicCacheImplicits
 		}
 	implicit def seqFormat[T](implicit t: Format[T]): Format[Seq[T]] =
 		wrap[Seq[T], List[T]](_.toList, _.toSeq)(DefaultProtocol.listFormat)
-	
+
+  def wrapIn2[I] = new WrapIn2[I]
+  class WrapIn2[I] {
+  	def apply[J](implicit f: I => J, jCache: InputCache[J]): InputCache[I] =
+    	wrapIn[I, J](f, jCache)
+  }
+
 	def wrapIn[I,J](implicit f: I => J, jCache: InputCache[J]): InputCache[I] =
 		new InputCache[I]
 		{
