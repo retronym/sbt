@@ -17,13 +17,14 @@ object IncrementalCompile
 	    previous: Analysis,
 	    forEntry: File => Option[Analysis],
 	    output: Output, log: Logger,
-	    options: IncOptions): (Boolean, Analysis) =
+	    options: IncOptions,
+        deletionListener: Option[File => Unit] = None): (Boolean, Analysis) =
 	{
 		val current = Stamps.initial(Stamp.exists, Stamp.hash, Stamp.lastModified)
 		val internalMap = (f: File) => previous.relations.produced(f).headOption
 		val externalAPI = getExternalAPI(entry, forEntry)
 		try {
-			Incremental.compile(sources, entry, previous, current, forEntry, doCompile(compile, internalMap, externalAPI, current, output, options), log, options)
+			Incremental.compile(sources, entry, previous, current, forEntry, doCompile(compile, internalMap, externalAPI, current, output, options), log, options, deletionListener)
 		} catch {
 			case e: xsbti.CompileCancelled =>
 				log.info("Compilation has been cancelled")
