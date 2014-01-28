@@ -1,0 +1,46 @@
+// reified future, depenendencies are reified
+Task     ~ Future[T] has map/flatMap
+Setting  ~ 
+
+Initialize - RHS of a def, like a futre
+
+Result - Validation
+
+// newtypes
+SettingKey (AttributeKey[T])
+TaskKey    (AttributeKey[Task[T]]))
+InputKey   (AttributeKey[InputTask[T]]))
+
+
+InputTask:  State => Parser[Task[T]]
+
+
+myTask := {
+	k1.value + k2.value
+}
+
+
+// FlatMapping
+val kDyn = Def.taskDyn(if (k0.value) k2 else k3)
+
+// currently we only record dependency on k0
+// mark has a branch (wip/no-setting-binder) that would extend this to include k2/k3
+myTask := {
+	kDyn.value
+}
+
+
+// Macros
+foo.value
+foo : Task[T]             // rare, implementation detail of testing
+foo : Initialize[T]       // name.value
+foo : Initialize[Task[T]] // normal task, e.g. compile.value
+
+// .value macro  converts this to
+InputWrapper.wrap_task(foo)
+InputWrapper.wrap_initTask(foo)
+// etc
+
+
+
+

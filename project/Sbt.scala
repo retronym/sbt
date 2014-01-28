@@ -17,10 +17,12 @@ object Sbt extends Build
 		version := "0.13.2-SNAPSHOT",
 		publishArtifact in packageDoc := false,
 		scalaVersion := "2.10.3",
+		scalaBinaryVersion := "2.10",
 		publishMavenStyle := false,
 		componentID := None,
 		crossPaths := false,
 		resolvers += Resolver.typesafeIvyRepo("releases"),
+		resolvers += "pr-scala snapshots" at "http://private-repo.typesafe.com/typesafe/scala-pr-validation-snapshots/",
 		concurrentRestrictions in Global += Util.testExclusiveRestriction,
 		testOptions += Tests.Argument(TestFrameworks.ScalaCheck, "-w", "1"),
 		javacOptions in compile ++= Seq("-target", "6", "-source", "6", "-Xlint", "-Xlint:-serial")

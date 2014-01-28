@@ -594,6 +594,7 @@ trait Init[Scope]
 		def mapReferenced(g: MapScoped) = mapInputs( mapReferencedT(g) )
 		def apply[S](g: T => S) = new Apply(g compose f, inputs, alist)
 		def mapConstant(g: MapConstant) = mapInputs( mapConstantT(g) )
+		// JZ: Here's an interesting call to `transform`.
 		def mapInputs(g: Initialize ~> Initialize): Initialize[T] = new Apply(f, alist.transform(inputs, g), alist)
 		def evaluate(ss: Settings[Scope]) = f(alist.transform(inputs, evaluateT(ss)))
 		def validateKeyReferenced(g: ValidateKeyRef) =
