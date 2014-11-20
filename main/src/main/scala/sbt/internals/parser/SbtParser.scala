@@ -99,8 +99,10 @@ private[sbt] case class SbtParser(file: File, lines: Seq[String]) extends Parsed
     def isBadValDef(t: Tree): Boolean =
       t match {
         case x @ toolbox.u.ValDef(_, _, _, rhs) if rhs != toolbox.u.EmptyTree =>
-          val content = modifiedContent.substring(x.pos.start, x.pos.end)
-          !(content contains "=")
+          !x.pos.isRange || {
+            val content = modifiedContent.substring(x.pos.start, x.pos.end)
+            !(content contains "=")
+          }
         case _ => false
       }
     parsedTrees.filter(isBadValDef).foreach { badTree =>
@@ -115,7 +117,7 @@ private[sbt] case class SbtParser(file: File, lines: Seq[String]) extends Parsed
     }
 
     def convertImport(t: Tree): (String, Int) =
-      (modifiedContent.substring(t.pos.start, t.pos.end), t.pos.line - 1)
+      (modifiedContent.substring(t.pos.startOrPoint, t.pos.endOrPoint), t.pos.line - 1)
 
     /**
      * See BugInParser
@@ -125,7 +127,7 @@ private[sbt] case class SbtParser(file: File, lines: Seq[String]) extends Parsed
      */
     def parseStatementAgain(t: Tree, originalStatement: String): String = {
       val statement = util.Try(toolbox.parse(originalStatement)) match {
-        case util.Failure(th) =>
+        case util.Failure(th) if t.pos.isRange =>
           val missingText = findMissingText(modifiedContent, t.pos.end, t.pos.line, fileName, th)
           originalStatement + missingText
         case _ =>
@@ -136,13 +138,13 @@ private[sbt] case class SbtParser(file: File, lines: Seq[String]) extends Parsed
 
     def convertStatement(t: Tree): Option[(String, Tree, LineRange)] =
       t.pos match {
-        case NoPosition =>
-          None
-        case position =>
+        case position if position.isRange =>
           val originalStatement = modifiedContent.substring(position.start, position.end)
           val statement = parseStatementAgain(t, originalStatement)
           val numberLines = countLines(statement)
           Some((statement, t, LineRange(position.line - 1, position.line + numberLines)))
+        case _ =>
+          None
       }
     val stmtTreeLineRange = statements flatMap convertStatement
     (imports map convertImport, stmtTreeLineRange.map { case (stmt, _, lr) => (stmt, lr) }, stmtTreeLineRange.map { case (stmt, tree, _) => (stmt, tree) }, modifiedContent)
