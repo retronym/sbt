@@ -146,7 +146,13 @@ class ExtractAPI[GlobalType <: CallbackGlobal](val global: GlobalType,
     }
 
   private def thisPath(sym: Symbol) = path(pathComponents(sym, Constants.thisPath :: Nil))
-  private def path(components: List[PathComponent]) = new xsbti.api.Path(components.toArray[PathComponent])
+  private def path(components: List[PathComponent]) = components match {
+    case Nil => Constants.emptyPath
+    case _ =>
+      val componentArray = new Array[PathComponent](components.length)
+      components.copyToArray(componentArray)
+      new xsbti.api.Path(componentArray)
+  }
   private def pathComponents(sym: Symbol, postfix: List[PathComponent]): List[PathComponent] =
     {
       if (sym == NoSymbol || sym.isRoot || sym.isEmptyPackageClass || sym.isRootPackage) postfix
@@ -157,7 +163,13 @@ class ExtractAPI[GlobalType <: CallbackGlobal](val global: GlobalType,
       case s: SimpleType => s
       case x             => log("Not a simple type:\n\tType: " + t + " (" + t.getClass + ")\n\tTransformed: " + x.getClass); Constants.emptyType
     }
-  private def types(in: Symbol, t: List[Type]): Array[xsbti.api.Type] = t.toArray[Type].map(processType(in, _))
+  private def types(in: Symbol, t: List[Type]): Array[xsbti.api.Type] = t match {
+    case Nil => Constants.emptyTypesArray
+    case _ =>
+      val resultArray = new Array[xsbti.api.Type](t.length)
+      t.iterator.map(processType(in, _)).copyToArray(resultArray)
+      resultArray
+  }
   private def projectionType(in: Symbol, pre: Type, sym: Symbol) =
     {
       if (pre == NoPrefix) {
@@ -195,7 +207,8 @@ class ExtractAPI[GlobalType <: CallbackGlobal](val global: GlobalType,
       // annotations from bean methods are not handled because:
       //  a) they are recorded as normal source methods anyway
       //  b) there is no way to distinguish them from user-defined methods
-      val associated = List(b, b.getter(b.enclClass), b.setter(b.enclClass)).filter(_ != NoSymbol)
+      val canHaveSetter = b.isTerm && b.owner.isClass && b.firstParam == NoSymbol
+      val associated = List(b, b.getter(b.enclClass), if (canHaveSetter) b.setter(b.enclClass) else NoSymbol).filter(_ != NoSymbol)
       associated.flatMap(ss => mkAnnotations(in, ss.annotations)).distinct match {
         case Nil => ExtractAPI.EmptyAnnotationArray
         case xs => xs.toArray
@@ -211,8 +224,13 @@ class ExtractAPI[GlobalType <: CallbackGlobal](val global: GlobalType,
         {
           def parameterList(syms: List[Symbol]): xsbti.api.ParameterList =
             {
-              val isImplicitList = syms match { case head :: _ => isImplicit(head); case _ => false }
-              new xsbti.api.ParameterList(syms.map(parameterS).toArray, isImplicitList)
+              syms match {
+                case Nil => Constants.emptyParameterList
+                case head :: _ =>
+                  val paramsArray = new Array[xsbti.api.MethodParameter](syms.size)
+                  syms.iterator.map(parameterS).copyToArray(paramsArray)
+                  new xsbti.api.ParameterList(paramsArray, isImplicit(head))
+              }
             }
           t match {
             case PolyType(typeParams0, base) =>
@@ -225,8 +243,16 @@ class ExtractAPI[GlobalType <: CallbackGlobal](val global: GlobalType,
               build(resultType, typeParams, valueParameters)
             case returnType =>
               val retType = processType(in, dropConst(returnType))
-              new xsbti.api.Def(valueParameters.reverse.toArray, retType, typeParams,
-                simpleName(s), getAccess(s), getModifiers(s), annotations(in, s))
+              valueParameters match {
+                case Nil =>
+                  new xsbti.api.Def(Constants.emptyParameterListArray, retType, typeParams,
+                    simpleName(s), getAccess(s), getModifiers(s), annotations(in, s))
+                case _ =>
+                  val valueParamsArray = new Array[xsbti.api.ParameterList](valueParameters.size)
+                  valueParameters.reverseIterator.copyToArray(valueParamsArray)
+                  new xsbti.api.Def(valueParamsArray, retType, typeParams,
+                    simpleName(s), getAccess(s), getModifiers(s), annotations(in, s))
+              }
           }
         }
       def parameterS(s: Symbol): xsbti.api.MethodParameter = {
@@ -493,7 +519,13 @@ class ExtractAPI[GlobalType <: CallbackGlobal](val global: GlobalType,
     }
   }
   private def typeParameters(in: Symbol, s: Symbol): Array[xsbti.api.TypeParameter] = typeParameters(in, s.typeParams)
-  private def typeParameters(in: Symbol, s: List[Symbol]): Array[xsbti.api.TypeParameter] = s.map(typeParameter(in, _)).toArray[xsbti.api.TypeParameter]
+  private def typeParameters(in: Symbol, s: List[Symbol]): Array[xsbti.api.TypeParameter] = s match {
+    case Nil => Constants.emptyTypeParameterArray
+    case _ =>
+      val typeParameterArray = new Array[xsbti.api.TypeParameter](s.length)
+      s.iterator.map(typeParameter(in, _)).copyToArray(typeParameterArray)
+      typeParameterArray
+  }
   private def typeParameter(in: Symbol, s: Symbol): xsbti.api.TypeParameter =
     {
       val varianceInt = s.variance
@@ -573,6 +605,8 @@ class ExtractAPI[GlobalType <: CallbackGlobal](val global: GlobalType,
     }
   }
   private object Constants {
+
+
     val local = new xsbti.api.ThisQualifier
     val public = new xsbti.api.Public
     val privateLocal = new xsbti.api.Private(local)
@@ -581,6 +615,11 @@ class ExtractAPI[GlobalType <: CallbackGlobal](val global: GlobalType,
     val emptyPath = new xsbti.api.Path(Array())
     val thisPath = new xsbti.api.This
     val emptyType = new xsbti.api.EmptyType
+    val emptyParameterList = new xsbti.api.ParameterList(Array(), false)
+    val emptyParameterListArray = Array[xsbti.api.ParameterList]()
+    val emptyTypeParameterArray = Array[xsbti.api.TypeParameter]()
+    val emptyTypesArray = Array[xsbti.api.Type]()
+    val emptyPathComponentArray = Array[xsbti.api.PathComponent]()
   }
 
   private def simpleName(s: Symbol): String =
