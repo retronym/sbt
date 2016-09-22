@@ -178,11 +178,14 @@ class ExtractAPI[GlobalType <: CallbackGlobal](val global: GlobalType,
   // This way, the API is not sensitive to whether we compiled from source or loaded from classfile.
   // (When looking at the sources we see all annotations, but when loading from classes we only see the pickled (static) ones.)
   private def mkAnnotations(in: Symbol, as: List[AnnotationInfo]): Array[xsbti.api.Annotation] =
-    staticAnnotations(as).toArray.map { a =>
-      new xsbti.api.Annotation(processType(in, a.atp),
-        if (a.assocs.isEmpty) Array(new xsbti.api.AnnotationArgument("", a.args.mkString("(", ",", ")"))) // what else to do with a Tree?
-        else a.assocs.map { case (name, value) => new xsbti.api.AnnotationArgument(name.toString, value.toString) }.toArray[xsbti.api.AnnotationArgument]
-      )
+    staticAnnotations(as) match {
+      case Nil => ExtractAPI.EmptyAnnotationArray
+      case anns => anns.map { a =>
+        new xsbti.api.Annotation(processType(in, a.atp),
+          if (a.assocs.isEmpty) Array(new xsbti.api.AnnotationArgument("", a.args.mkString("(", ",", ")"))) // what else to do with a Tree?
+          else a.assocs.map { case (name, value) => new xsbti.api.AnnotationArgument(name.toString, value.toString) }.toArray[xsbti.api.AnnotationArgument]
+        )
+      }.toArray
     }
 
   private def annotations(in: Symbol, s: Symbol): Array[xsbti.api.Annotation] =
@@ -193,7 +196,10 @@ class ExtractAPI[GlobalType <: CallbackGlobal](val global: GlobalType,
       //  a) they are recorded as normal source methods anyway
       //  b) there is no way to distinguish them from user-defined methods
       val associated = List(b, b.getter(b.enclClass), b.setter(b.enclClass)).filter(_ != NoSymbol)
-      associated.flatMap(ss => mkAnnotations(in, ss.annotations)).distinct.toArray
+      associated.flatMap(ss => mkAnnotations(in, ss.annotations)).distinct match {
+        case Nil => ExtractAPI.EmptyAnnotationArray
+        case xs => xs.toArray
+      }
     }
 
   private def viewer(s: Symbol) = (if (s.isModule) s.moduleClass else s).thisType
@@ -242,7 +248,7 @@ class ExtractAPI[GlobalType <: CallbackGlobal](val global: GlobalType,
           new xsbti.api.MethodParameter(name, processType(in, t), hasDefault(paramSym), special)
         }
       val t = viewer(in).memberInfo(s)
-      build(t, Array(), Nil)
+      build(t, ExtractAPI.EmptyTypeParameterArray, Nil)
     }
   private def hasDefault(s: Symbol) = s != NoSymbol && s.hasFlag(Flags.DEFAULTPARAM)
   private def fieldDef[T](in: Symbol, s: Symbol, keepConst: Boolean, create: (xsbti.api.Type, String, xsbti.api.Access, xsbti.api.Modifiers, Array[xsbti.api.Annotation]) => T): T =
@@ -590,4 +596,9 @@ class ExtractAPI[GlobalType <: CallbackGlobal](val global: GlobalType,
     implicit def compat(ann: AnnotationInfo): IsStatic = new IsStatic(ann)
     annotations.filter(_.isStatic)
   }
+}
+
+object ExtractAPI {
+  val EmptyTypeParameterArray = Array[xsbti.api.TypeParameter]()
+  val EmptyAnnotationArray = Array[xsbti.api.Annotation]()
 }
