@@ -4,10 +4,12 @@
 package sbt
 package compiler
 
-import xsbti.{ AnalysisCallback, Logger => xLogger, Reporter }
-import xsbti.compile.{ CachedCompiler, CachedCompilerProvider, DependencyChanges, GlobalsCache, CompileProgress, Output }
+import xsbti.{ AnalysisCallback, Reporter, Logger => xLogger }
+import xsbti.compile.{ CachedCompiler, CachedCompilerProvider, CompileProgress, DependencyChanges, GlobalsCache, Output }
 import java.io.File
 import java.net.{ URL, URLClassLoader }
+
+import sbt.classpath.ClassLoaderCache
 
 /**
  * Interface to the Scala compiler that uses the dependency analysis plugin.  This class uses the Scala library and compiler
@@ -110,17 +112,9 @@ final class AnalyzingCompiler private (val scalaInstance: xsbti.compile.ScalaIns
   private[this] def loader(log: Logger) =
     {
       val interfaceJar = provider(scalaInstance, log)
-      // this goes to scalaInstance.loader for scala classes and the loader of this class for xsbti classes
-      val dual = createDualLoader(scalaInstance.loader, getClass.getClassLoader)
-      new URLClassLoader(Array(interfaceJar.toURI.toURL), dual)
+      ClassLoaderCache.instance.cachedInterfaceJarLoader(interfaceJar, scalaInstance.loader())
     }
   private[this] def getInterfaceClass(name: String, log: Logger) = Class.forName(name, true, loader(log))
-  protected def createDualLoader(scalaLoader: ClassLoader, sbtLoader: ClassLoader): ClassLoader =
-    {
-      val xsbtiFilter = (name: String) => name.startsWith("xsbti.")
-      val notXsbtiFilter = (name: String) => !xsbtiFilter(name)
-      new classpath.DualLoader(scalaLoader, notXsbtiFilter, x => true, sbtLoader, xsbtiFilter, x => false)
-    }
   override def toString = "Analyzing compiler (Scala " + scalaInstance.actualVersion + ")"
 }
 object AnalyzingCompiler {

@@ -265,8 +265,9 @@ object Defaults extends BuildCommon {
       if (plugin) scalaBase / ("sbt-" + sbtv) else scalaBase
     }
 
-  def compilersSetting = compilers := Compiler.compilers(scalaInstance.value, classpathOptions.value, javaHome.value,
-    bootIvyConfiguration.value, scalaCompilerBridgeSource.value)(appConfiguration.value, streams.value.log)
+  def compilersSetting = compilers :=
+    Compiler.compilers(scalaInstance.value, classpathOptions.value, javaHome.value,
+      bootIvyConfiguration.value, scalaCompilerBridgeSource.value)(appConfiguration.value, streams.value.log)
 
   lazy val configTasks = docTaskSettings(doc) ++ inTask(compile)(compileInputsSettings) ++ configGlobal ++ compileAnalysisSettings ++ Seq(
     compile := compileTask.value,

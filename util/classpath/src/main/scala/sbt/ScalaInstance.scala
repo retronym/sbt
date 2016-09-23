@@ -143,5 +143,6 @@ object ScalaInstance {
   import java.net.{ URL, URLClassLoader }
   private def scalaLoader(launcher: xsbti.Launcher): Seq[File] => ClassLoader = jars =>
     new URLClassLoader(jars.map(_.toURI.toURL).toArray[URL], launcher.topLoader)
+
 }
 class InvalidScalaInstance(message: String, cause: Throwable) extends RuntimeException(message, cause)

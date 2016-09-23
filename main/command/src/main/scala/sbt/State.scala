@@ -6,6 +6,8 @@ package sbt
 import java.io.File
 import java.util.concurrent.Callable
 
+import sbt.classpath.ClassLoaderCache
+
 /**
  * Data structure representing all command execution information.
  *
@@ -231,7 +233,11 @@ object State {
     def setInteractive(i: Boolean) = s.put(BasicKeys.interactive, i)
 
     def classLoaderCache: classpath.ClassLoaderCache = s get BasicKeys.classLoaderCache getOrElse newClassLoaderCache
-    def initializeClassLoaderCache = s.put(BasicKeys.classLoaderCache, newClassLoaderCache)
+    def initializeClassLoaderCache = {
+      val newCache = newClassLoaderCache
+      ClassLoaderCache.instance = newCache
+      s.put(BasicKeys.classLoaderCache, newCache)
+    }
     private[this] def newClassLoaderCache = new classpath.ClassLoaderCache(s.configuration.provider.scalaProvider.launcher.topLoader)
   }
 
