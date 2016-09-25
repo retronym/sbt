@@ -28,7 +28,11 @@ final class AnalyzingCompiler private (val scalaInstance: xsbti.compile.ScalaIns
   @deprecated("A Logger is no longer needed.", "0.13.0")
   def this(scalaInstance: xsbti.compile.ScalaInstance, provider: CompilerInterfaceProvider, cp: xsbti.compile.ClasspathOptions, log: Logger) = this(scalaInstance, provider, cp)
 
-  def onArgs(f: Seq[String] => Unit): AnalyzingCompiler = new AnalyzingCompiler(scalaInstance, provider, cp, f)
+  def onArgs(f: Seq[String] => Unit): AnalyzingCompiler = {
+    val ac = new AnalyzingCompiler(scalaInstance, provider, cp, f)
+    ac.classLoaderCache = this.classLoaderCache
+    ac
+  }
 
   def apply(sources: Seq[File], changes: DependencyChanges, classpath: Seq[File], singleOutput: File, options: Seq[String], callback: AnalysisCallback, maximumErrors: Int, cache: GlobalsCache, log: Logger) {
     val arguments = (new CompilerArguments(scalaInstance, cp))(Nil, classpath, None, options)
@@ -111,9 +115,28 @@ final class AnalyzingCompiler private (val scalaInstance: xsbti.compile.ScalaIns
     }
   private[this] def loader(log: Logger) =
     {
+      val sbtLoader = getClass.getClassLoader
       val interfaceJar = provider(scalaInstance, log)
-      ClassLoaderCache.instance.cachedInterfaceJarLoader(interfaceJar, scalaInstance.loader())
+      val scalaLoader = scalaInstance.loader()
+      def create = {
+        def createDualLoader(scalaLoader: ClassLoader, sbtLoader: ClassLoader): ClassLoader = {
+          val xsbtiFilter = (name: String) => name.startsWith("xsbti.")
+          val notXsbtiFilter = (name: String) => !xsbtiFilter(name)
+          new classpath.DualLoader(scalaLoader, notXsbtiFilter, x => true, sbtLoader, xsbtiFilter, x => false)
+        }
+
+        val dual = createDualLoader(scalaLoader, sbtLoader)
+        new URLClassLoader(Array(interfaceJar.toURI.toURL), dual)
+      }
+      classLoaderCache match {
+        case Some(cache) => cache.cachedInterfaceJarLoader(interfaceJar, scalaLoader)(() => create)
+        case None        => create
+      }
     }
+
+  def setClassLoaderCache(cache: ClassLoaderCache): Unit = classLoaderCache = Some(cache)
+  private var classLoaderCache: Option[ClassLoaderCache] = None
+
   private[this] def getInterfaceClass(name: String, log: Logger) = Class.forName(name, true, loader(log))
   override def toString = "Analyzing compiler (Scala " + scalaInstance.actualVersion + ")"
 }

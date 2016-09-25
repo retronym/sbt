@@ -7,10 +7,6 @@ import java.util.HashMap
 
 import sbt.classpath
 
-object ClassLoaderCache {
-  var instance: ClassLoaderCache = null
-}
-
 // Hack for testing only
 private[sbt] final class ClassLoaderCache(val commonParent: ClassLoader) {
   private[this] val delegate = new HashMap[List[File], Reference[CachedClassLoader]]
@@ -26,23 +22,12 @@ private[sbt] final class ClassLoaderCache(val commonParent: ClassLoader) {
   }
 
   private var cachedInterfaceLoaders = new HashMap[File, Reference[CachedInterfaceClassLoader]]
-  def cachedInterfaceJarLoader(interfaceJar: File, scalaLoader: ClassLoader): ClassLoader = synchronized {
-    val sbtLoader = getClass.getClassLoader
-    def create = {
-      def createDualLoader(scalaLoader: ClassLoader, sbtLoader: ClassLoader): ClassLoader = {
-        val xsbtiFilter = (name: String) => name.startsWith("xsbti.")
-        val notXsbtiFilter = (name: String) => !xsbtiFilter(name)
-        new classpath.DualLoader(scalaLoader, notXsbtiFilter, x => true, sbtLoader, xsbtiFilter, x => false)
-      }
-
-      val dual = createDualLoader(scalaLoader, sbtLoader)
-      new URLClassLoader(Array(interfaceJar.toURI.toURL), dual)
-    }
+  def cachedInterfaceJarLoader(interfaceJar: File, scalaLoader: ClassLoader)(mkLoader: () => ClassLoader): ClassLoader = synchronized {
     val tstamp = interfaceJar.lastModified()
 
     def newEntry(): ClassLoader =
       {
-        val loader = create
+        val loader = mkLoader()
         cachedInterfaceLoaders.put(interfaceJar, new SoftReference(new CachedInterfaceClassLoader(loader, interfaceJar, tstamp, scalaLoader)))
         loader
       }
