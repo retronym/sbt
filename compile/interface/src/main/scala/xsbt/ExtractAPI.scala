@@ -177,13 +177,18 @@ class ExtractAPI[GlobalType <: CallbackGlobal](val global: GlobalType,
   // The compiler only pickles static annotations, so only include these in the API.
   // This way, the API is not sensitive to whether we compiled from source or loaded from classfile.
   // (When looking at the sources we see all annotations, but when loading from classes we only see the pickled (static) ones.)
-  private def mkAnnotations(in: Symbol, as: List[AnnotationInfo]): Array[xsbti.api.Annotation] =
-    staticAnnotations(as).toArray.map { a =>
-      new xsbti.api.Annotation(processType(in, a.atp),
-        if (a.assocs.isEmpty) Array(new xsbti.api.AnnotationArgument("", a.args.mkString("(", ",", ")"))) // what else to do with a Tree?
-        else a.assocs.map { case (name, value) => new xsbti.api.AnnotationArgument(name.toString, value.toString) }.toArray[xsbti.api.AnnotationArgument]
-      )
+  private def mkAnnotations(in: Symbol, as: List[AnnotationInfo]): Array[xsbti.api.Annotation] = {
+    staticAnnotations(as) match {
+      case Nil => ExtractAPI.emptyAnnotationArray
+      case xs =>
+        xs.iterator.map { a =>
+          new xsbti.api.Annotation(processType(in, a.atp),
+            if (a.assocs.isEmpty) Array(new xsbti.api.AnnotationArgument("", a.args.mkString("(", ",", ")"))) // what else to do with a Tree?
+            else a.assocs.map { case (name, value) => new xsbti.api.AnnotationArgument(name.toString, value.toString) }.toArray[xsbti.api.AnnotationArgument]
+          )
+        }.toArray
     }
+  }
 
   private def annotations(in: Symbol, s: Symbol): Array[xsbti.api.Annotation] =
     atPhase(currentRun.typerPhase) {
@@ -590,4 +595,8 @@ class ExtractAPI[GlobalType <: CallbackGlobal](val global: GlobalType,
     implicit def compat(ann: AnnotationInfo): IsStatic = new IsStatic(ann)
     annotations.filter(_.isStatic)
   }
+}
+
+object ExtractAPI {
+  private val emptyAnnotationArray = Array[xsbti.api.Annotation]()
 }

@@ -15,8 +15,10 @@ abstract class LocateClassFile extends Compat {
   val global: CallbackGlobal
   import global._
 
+  private val classFileCache = perRunCaches.newMap[Symbol, Option[(AbstractFile, String, Boolean)]]()
   private[this] final val classSeparator = '.'
-  protected def classFile(sym: Symbol): Option[(AbstractFile, String, Boolean)] =
+  protected def classFile(sym: Symbol): Option[(AbstractFile, String, Boolean)] = classFileCache.getOrElseUpdate(sym, lookupClassFile(sym))
+  private def lookupClassFile(sym: Symbol): Option[(AbstractFile, String, Boolean)] =
     // package can never have a corresponding class file; this test does not
     // catch package objects (that do not have this flag set)
     if (sym hasFlag scala.tools.nsc.symtab.Flags.PACKAGE) None else {
