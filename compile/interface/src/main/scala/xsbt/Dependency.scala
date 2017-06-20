@@ -32,7 +32,7 @@ object Dependency {
 final class Dependency(val global: CallbackGlobal) extends LocateClassFile with GlobalHelpers {
   import global._
 
-  def newPhase(prev: Phase): Phase = new DependencyPhase(prev)
+  def newPhase(prev: Phase): Phase = if (global.getClass.getSimpleName == "NullAnalysisCallback") prev else new DependencyPhase(prev)
   private class DependencyPhase(prev: Phase) extends GlobalPhase(prev) {
     override def description = "Extracts dependency information"
     def name = Dependency.name

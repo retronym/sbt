@@ -62,9 +62,15 @@ object IncrementalCompile {
     }
   def doCompile(compile: (Set[File], DependencyChanges, xsbti.AnalysisCallback) => Unit, internalMap: File => Option[File], externalAPI: (File, String) => Option[Source], current: ReadStamps, output: Output, options: IncOptions) =
     (srcs: Set[File], changes: DependencyChanges) => {
-      val callback = new AnalysisCallback(internalMap, externalAPI, current, output, options)
-      compile(srcs, changes, callback)
-      callback.get
+      if (options.antStyle) {
+        compile(srcs, changes, new NullAnalysisCallback)
+        Analysis.Empty
+      }
+      else {
+        val callback = new AnalysisCallback(internalMap, externalAPI, current, output, options)
+        compile(srcs, changes, callback)
+        callback.get
+      }
     }
   def getExternalAPI(entry: String => Option[File], forEntry: File => Option[Analysis]): (File, String) => Option[Source] =
     (file: File, className: String) =>
@@ -79,6 +85,20 @@ object IncrementalCompile {
           }
       }
 }
+
+private final class NullAnalysisCallback() extends xsbti.AnalysisCallback {
+  override def sourceDependency(dependsOn: File, source: File, publicInherited: Boolean): Unit = ()
+  override def sourceDependency(dependsOn: File, source: File, context: DependencyContext): Unit = ()
+  override def binaryDependency(binary: File, name: String, source: File, publicInherited: Boolean): Unit = ()
+  override def binaryDependency(binary: File, name: String, source: File, context: DependencyContext): Unit = ()
+  override def generatedClass(source: File, module: File, name: String): Unit = ()
+  override def api(sourceFile: File, source: SourceAPI): Unit = ()
+  override def usedName(sourceFile: File, names: String): Unit = ()
+  override def problem(what: String, pos: Position, msg: String, severity: Severity, reported: Boolean): Unit = ()
+  override def nameHashing(): Boolean = false
+  override def includeSynthToNameHashing(): Boolean = false
+}
+
 private final class AnalysisCallback(internalMap: File => Option[File], externalAPI: (File, String) => Option[Source], current: ReadStamps, output: Output, options: IncOptions) extends xsbti.AnalysisCallback {
   val compilation = {
     val outputSettings = output match {

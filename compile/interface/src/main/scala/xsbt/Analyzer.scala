@@ -18,7 +18,7 @@ object Analyzer {
 final class Analyzer(val global: CallbackGlobal) extends LocateClassFile {
   import global._
 
-  def newPhase(prev: Phase): Phase = new AnalyzerPhase(prev)
+  def newPhase(prev: Phase): Phase = if (global.getClass.getSimpleName == "NullAnalysisCallback") prev else new AnalyzerPhase(prev)
   private class AnalyzerPhase(prev: Phase) extends GlobalPhase(prev) {
     override def description = "Finds concrete instances of provided superclasses, and application entry points."
     def name = Analyzer.name
