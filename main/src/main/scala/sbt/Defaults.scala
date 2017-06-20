@@ -322,7 +322,6 @@ object Defaults extends BuildCommon {
     }
   }
 
-
   lazy val configTasks = docTaskSettings(doc) ++ inTask(compile)(compileInputsSettings) ++ configGlobal ++ compileAnalysisSettings ++ Seq(
     compile := compileTask.value,
     manipulateBytecode := compileIncremental.value,

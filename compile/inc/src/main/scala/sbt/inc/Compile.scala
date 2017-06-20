@@ -64,9 +64,8 @@ object IncrementalCompile {
     (srcs: Set[File], changes: DependencyChanges) => {
       if (options.antStyle) {
         compile(srcs, changes, new NullAnalysisCallback)
-        Analysis.Empty
-      }
-      else {
+        Analysis.empty(options.nameHashing)
+      } else {
         val callback = new AnalysisCallback(internalMap, externalAPI, current, output, options)
         compile(srcs, changes, callback)
         callback.get
