@@ -21,7 +21,7 @@ final class API(val global: CallbackGlobal) extends Compat {
 
   @inline def debug(msg: => String) = if (settings.verbose.value) inform(msg)
 
-  def newPhase(prev: Phase) = if (global.getClass.getSimpleName == "NullAnalysisCallback") prev else new ApiPhase(prev)
+  def newPhase(prev: Phase) = if (global.callback.getClass.getSimpleName == "NullAnalysisCallback") prev else new ApiPhase(prev)
   class ApiPhase(prev: Phase) extends GlobalPhase(prev) {
     override def description = "Extracts the public API from source files."
     def name = API.name
