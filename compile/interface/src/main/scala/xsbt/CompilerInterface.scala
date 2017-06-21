@@ -5,18 +5,21 @@ package xsbt
 
 import xsbti.{ AnalysisCallback, Logger, Problem, Reporter, Severity }
 import xsbti.compile._
-import scala.tools.nsc.{ backend, io, reporters, symtab, util, Phase, Global, Settings, SubComponent }
+
+import scala.tools.nsc.{ Global, Phase, Settings, SubComponent, backend, io, reporters, symtab, util }
 import scala.tools.nsc.interactive.RangePositions
 import backend.JavaPlatform
 import scala.tools.util.PathResolver
 import symtab.SymbolLoaders
-import util.{ ClassPath, DirectoryClassPath, MergedClassPath, JavaClassPath }
+import util.{ ClassPath, DirectoryClassPath, JavaClassPath, MergedClassPath }
 import ClassPath.{ ClassPathContext, JavaContext }
 import io.AbstractFile
 import scala.annotation.tailrec
 import scala.collection.mutable
 import Log.debug
 import java.io.File
+
+import scala.reflect.io.NoAbstractFile
 
 final class CompilerInterface {
   def newCompiler(options: Array[String], output: Output, initialLog: Logger, initialDelegate: Reporter, resident: Boolean): CachedCompiler =
@@ -35,6 +38,7 @@ sealed trait GlobalCompat { self: Global =>
 sealed abstract class CallbackGlobal(settings: Settings, reporter: reporters.Reporter, output: Output) extends Global(settings, reporter) with GlobalCompat {
   def callback: AnalysisCallback
   def findClass(name: String): Option[(AbstractFile, Boolean)]
+  def findClassContainer(name: String, sym: Symbol): Option[(AbstractFile, Boolean)]
   lazy val outputDirs: Iterable[File] = {
     output match {
       case single: SingleOutput  => List(single.outputDirectory)
@@ -237,6 +241,8 @@ private final class CachedCompiler0(args: Array[String], output: Output, initial
 
     def findClass(name: String): Option[(AbstractFile, Boolean)] =
       getOutputClass(name).map(f => (f, true)) orElse findOnClassPath(name).map(f => (f, false))
+    def findClassContainer(name: String, sym: Symbol): Option[(AbstractFile, Boolean)] =
+      getOutputClass(name).map(f => (f, true)) orElse (if (sym.sourceFile == null && sym.associatedFile != NoAbstractFile) Some(sym.associatedFile, false) else None)
 
     def getOutputClass(name: String): Option[AbstractFile] =
       {

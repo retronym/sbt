@@ -59,7 +59,7 @@ final class Dependency(val global: CallbackGlobal) extends LocateClassFile with 
           def binaryDependency(file: File, className: String) = callback.binaryDependency(file, className, sourceFile, context)
           val onSource = on.sourceFile
           if (onSource == null) {
-            classFile(on) match {
+            classFileContainer(on) match {
               case Some((f, className, inOutDir)) =>
                 if (inOutDir && on.isJavaDefined) registerTopLevelSym(on)
                 f match {
