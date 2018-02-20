@@ -51,7 +51,7 @@ private[sbt] final class Execute[A[_] <: AnyRef](
   type Strategy = CompletionService[A[_], Completed]
 
   private[this] val forward = idMap[A[_], IDSet[A[_]]]
-  private[this] val reverse = idMap[A[_], Iterable[A[_]]]
+  private[this] val reverse = idMap[A[_], mutable.ListBuffer[A[_]]]
   private[this] val callers = pMap[A, Compose[IDSet, A]#Apply]
   private[this] val state = idMap[A[_], State]
   private[this] val viewCache = pMap[A, Node[A, ?]]
@@ -202,7 +202,7 @@ private[sbt] final class Execute[A[_] <: AnyRef](
     pre { newPre(node) }
 
     val v = register(node)
-    val deps = dependencies(v) ++ runBefore(node)
+    val deps: Iterable[A[_]] = dependencies(v) ++ runBefore(node)
     val active = IDSet[A[_]](deps filter notDone)
     progressState = progress.registered(progressState,
                                         node,
@@ -251,7 +251,7 @@ private[sbt] final class Execute[A[_] <: AnyRef](
   /** Enters the given node into the system. */
   def register[T](node: A[T]): Node[A, T] = {
     state(node) = Pending
-    reverse(node) = Seq()
+    reverse(node) = mutable.ListBuffer.empty
     viewCache.getOrUpdate(node, view(node))
   }
 
@@ -292,7 +292,7 @@ private[sbt] final class Execute[A[_] <: AnyRef](
   def remove[K, V](map: Map[K, V], k: K): V =
     map.remove(k).getOrElse(sys.error("Key '" + k + "' not in map :\n" + map))
 
-  def addReverse(node: A[_], dependent: A[_]): Unit = reverse(node) ++= Seq(dependent)
+  def addReverse(node: A[_], dependent: A[_]): Unit = reverse(node) += dependent
   def addCaller[T](caller: A[T], target: A[T]): Unit =
     callers.getOrUpdate(target, IDSet.create[A[T]]) += caller
 
