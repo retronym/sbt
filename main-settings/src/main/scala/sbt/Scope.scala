@@ -9,9 +9,10 @@ package sbt
 
 import java.net.URI
 
-import sbt.internal.util.{ AttributeKey, AttributeMap, Dag }
-
+import sbt.internal.util.{AttributeKey, AttributeMap, Dag}
 import sbt.io.IO
+
+import scala.collection.mutable
 
 final case class Scope(project: ScopeAxis[Reference],
                        config: ScopeAxis[ConfigKey],
@@ -46,14 +47,15 @@ object Scope {
   def resolveBuildScope(thisScope: Scope, current: URI): Scope => Scope =
     buildResolve(current) compose replaceThis(thisScope) compose subThisProject
 
-  def replaceThis(thisScope: Scope): Scope => Scope =
-    (scope: Scope) =>
-      Scope(
-        subThis(thisScope.project, scope.project),
-        subThis(thisScope.config, scope.config),
-        subThis(thisScope.task, scope.task),
-        subThis(thisScope.extra, scope.extra)
-    )
+  def replaceThis(thisScope: Scope): Scope => Scope = { (scope: Scope) =>
+    val project1 = subThis(thisScope.project, scope.project)
+    val config1 = subThis(thisScope.config, scope.config)
+    val task1 = subThis(thisScope.task, scope.task)
+    val extra1 = subThis(thisScope.extra, scope.extra)
+    if ((thisScope.project eq project1) && (thisScope.config eq config1) && (thisScope.task eq task1) && (thisScope.extra eq extra1))
+      thisScope
+    else Scope(project1, config1, task1, extra1)
+  }
 
   def subThis[T](sub: ScopeAxis[T], into: ScopeAxis[T]): ScopeAxis[T] =
     if (into == This) sub else into
@@ -265,9 +267,13 @@ object Scope {
       extraInherit: (ResolvedReference, AttributeMap) => Seq[AttributeMap]
   )(rawScope: Scope): Seq[Scope] = {
     val scope = Scope.replaceThis(GlobalScope)(rawScope)
+    val result = new mutable.ListBuffer[Scope]()
 
     def nonProjectScopes(resolvedProj: ResolvedReference)(px: ScopeAxis[ResolvedReference]) = {
-      val p = px.toOption getOrElse resolvedProj
+      val p = px match {
+        case Select(s) => s
+        case _         => resolvedProj
+      }
       val configProj = p match {
         case pr: ProjectRef => pr; case br: BuildRef => ProjectRef(br.build, rootProject(br.build))
       }
@@ -278,7 +284,7 @@ object Scope {
         case t @ Select(_) => linearize(t)(taskInherit); case _ => withZeroAxis(scope.task)
       }
       val eLin = withZeroAxis(scope.extra)
-      for (c <- cLin; t <- tLin; e <- eLin) yield Scope(px, c, t, e)
+      for (c <- cLin; t <- tLin; e <- eLin) yield result += Scope(px, c, t, e)
     }
     scope.project match {
       case Zero | This => globalProjectDelegates(scope)
@@ -287,17 +293,19 @@ object Scope {
         val projAxes: Seq[ScopeAxis[ResolvedReference]] =
           resolvedProj match {
             case pr: ProjectRef => index.project(pr)
-            case br: BuildRef   => Select(br) :: Zero :: Nil
+            case br: BuildRef =>
+              Select(br) :: ZeroList
           }
-        projAxes flatMap nonProjectScopes(resolvedProj)
+        projAxes foreach nonProjectScopes(resolvedProj)
     }
+    result
   }
 
   def withZeroAxis[T](base: ScopeAxis[T]): Seq[ScopeAxis[T]] =
-    if (base.isSelect) base :: Zero :: Nil
-    else Zero :: Nil
+    if (base.isSelect) base :: ZeroList
+    else ZeroList
   def withGlobalScope(base: Scope): Seq[Scope] =
-    if (base == GlobalScope) GlobalScope :: Nil else base :: GlobalScope :: Nil
+    if (base == GlobalScope) GlobalScopeList else base :: GlobalScopeList
   def withRawBuilds(ps: Seq[ScopeAxis[ProjectRef]]): Seq[ScopeAxis[ResolvedReference]] =
     ps ++ (ps flatMap rawBuild).distinct :+ Zero
 
@@ -335,22 +343,25 @@ object Scope {
       inherit: T => Seq[T]): Seq[ScopeAxis[T]] =
     axis match {
       case Select(x)   => topologicalSort[T](x, appendZero)(inherit)
-      case Zero | This => if (appendZero) Zero :: Nil else Nil
+      case Zero | This => if (appendZero) ZeroList else Nil
     }
 
   def topologicalSort[T](node: T, appendZero: Boolean)(
       dependencies: T => Seq[T]): Seq[ScopeAxis[T]] = {
     val o = Dag.topologicalSortUnchecked(node)(dependencies).map(Select.apply)
-    if (appendZero) o ::: Zero :: Nil
+    if (appendZero) o ::: ZeroList
     else o
   }
   def globalProjectDelegates(scope: Scope): Seq[Scope] =
     if (scope == GlobalScope)
-      GlobalScope :: Nil
+      GlobalScopeList
     else
       for {
         c <- withZeroAxis(scope.config)
         t <- withZeroAxis(scope.task)
         e <- withZeroAxis(scope.extra)
       } yield Scope(Zero, c, t, e)
+
+  private val GlobalScopeList = GlobalScope :: Nil
+  private val ZeroList = Zero :: Nil
 }
