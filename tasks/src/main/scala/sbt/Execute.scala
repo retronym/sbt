@@ -204,20 +204,16 @@ private[sbt] final class Execute[A[_] <: AnyRef](
     val v = register(node)
     val deps: Iterable[A[_]] = dependencies(v) ++ runBefore(node)
     if (deps.isEmpty) {
-      progressState = progress.registered(progressState,
-        node,
-        deps,
-        Nil
-      )
+      progressState = progress.registered(progressState, node, deps, Nil)
       ready(node)
     } else {
       val active = IDSet[A[_]](deps filter notDone)
       progressState = progress.registered(progressState,
-        node,
-        deps,
-        active.toList
+                                          node,
+                                          deps,
+                                          active.toList
 
-        /** active is mutable, so take a snapshot */
+                                          /** active is mutable, so take a snapshot */
       )
 
       if (active.isEmpty)
