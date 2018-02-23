@@ -558,6 +558,19 @@ def scriptedUnpublishedTask: Def.Initialize[InputTask[Unit]] = Def.inputTask {
   )
 }
 
+lazy val benchmarks = project
+  .dependsOn(mainProj)
+  .enablePlugins(JmhPlugin)
+  .settings(
+    publish := {},
+    publishLocal := {},
+    skip in publish := true,
+    name := "Benchmarks of SBT",
+    scalaVersion := scala212,
+    javaOptions in Test ++= List("-Xmx600M", "-Xms600M"),
+  )
+
+
 lazy val publishLauncher = TaskKey[Unit]("publish-launcher")
 
 def allProjects =
