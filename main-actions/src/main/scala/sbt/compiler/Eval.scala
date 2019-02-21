@@ -83,7 +83,10 @@ final class Eval(optionsNoncp: Seq[String],
    */
   final class EvalGlobal(settings: Settings, reporter: Reporter)
       extends Global(settings, reporter) {
-    override def currentRun: Run = curRun
+    override def currentRun: Run = curRun match {
+      case null => super.currentRun // Avoid NPE during Run.<init>
+      case r => r
+    }
     var curRun: Run = null
   }
   lazy val global: EvalGlobal = new EvalGlobal(settings, reporter)
