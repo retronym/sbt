@@ -7,89 +7,62 @@
 
 package sbt
 
-import java.io.{ File, PrintWriter }
-import java.net.{ URI, URL }
-import java.nio.file.{ Paths, Path => NioPath }
+import java.io.{File, PrintWriter}
+import java.net.{URI, URL}
+import java.nio.file.{Paths, Path => NioPath}
 import java.util.Optional
 import java.util.concurrent.TimeUnit
-
 import lmcoursier.CoursierDependencyResolution
-import lmcoursier.definitions.{ Configuration => CConfiguration }
+import lmcoursier.definitions.{Configuration => CConfiguration}
 import org.apache.ivy.core.module.descriptor.ModuleDescriptor
 import org.apache.ivy.core.module.id.ModuleRevisionId
-import org.apache.logging.log4j.core.{ Appender => XAppender }
+import org.apache.logging.log4j.core.{Appender => XAppender}
 import org.scalasbt.ipcsocket.Win32SecurityLevel
-import sbt.Def.{ Initialize, ScopedKey, Setting, SettingsDefinition }
+import sbt.Def.{Initialize, ScopedKey, Setting, SettingsDefinition}
 import sbt.Keys._
 import sbt.OptionSyntax._
-import sbt.Project.{
-  inConfig,
-  inScope,
-  inTask,
-  richInitialize,
-  richInitializeTask,
-  richTaskSessionVar,
-  sbtRichTaskPromise
-}
-import sbt.Scope.{ GlobalScope, ThisScope, fillTaskAxis }
+import sbt.Project.{inConfig, inScope, inTask, richInitialize, richInitializeTask, richTaskSessionVar, sbtRichTaskPromise}
+import sbt.Scope.{GlobalScope, ThisScope, fillTaskAxis}
 import sbt.coursierint._
 import sbt.internal.CommandStrings.ExportStream
 import sbt.internal._
 import sbt.internal.classpath.AlternativeZincUtil
 import sbt.internal.inc.JavaInterfaceUtil._
-import sbt.internal.inc.classpath.{ ClasspathFilter, ClasspathUtil }
-import sbt.internal.inc.{ CompileOutput, MappedFileConverter, Stamps, ZincLmUtil, ZincUtil }
-import sbt.internal.io.{ Source, WatchState }
-import sbt.internal.librarymanagement.mavenint.{
-  PomExtraDependencyAttributes,
-  SbtPomExtraProperties
-}
-import sbt.internal.librarymanagement.{ CustomHttp => _, _ }
-import sbt.internal.nio.{ CheckBuildSources, Globs }
-import sbt.internal.server.{
-  BspCompileTask,
-  BuildServerProtocol,
-  BuildServerReporter,
-  Definition,
-  LanguageServerProtocol,
-  ServerHandler,
-  VirtualTerminal
-}
+import sbt.internal.inc.classpath.{ClasspathFilter, ClasspathUtil}
+import sbt.internal.inc.{CompileOutput, MappedFileConverter, Stamps, ZincLmUtil, ZincUtil}
+import sbt.internal.io.{Source, WatchState}
+import sbt.internal.librarymanagement.mavenint.{PomExtraDependencyAttributes, SbtPomExtraProperties}
+import sbt.internal.librarymanagement.{CustomHttp => _, _}
+import sbt.internal.nio.{CheckBuildSources, Globs}
+import sbt.internal.server.{BspCompileTask, BuildServerProtocol, BuildServerReporter, Definition, LanguageServerProtocol, ServerHandler, VirtualTerminal}
 import sbt.internal.testing.TestLogger
 import sbt.internal.util.Attributed.data
 import sbt.internal.util.Types._
-import sbt.internal.util.{ Terminal => ITerminal, _ }
+import sbt.internal.util.{Terminal => ITerminal, _}
 import sbt.internal.util.complete._
 import sbt.io.Path._
 import sbt.io._
 import sbt.io.syntax._
-import sbt.librarymanagement.Artifact.{ DocClassifier, SourceClassifier }
-import sbt.librarymanagement.Configurations.{
-  Compile,
-  CompilerPlugin,
-  IntegrationTest,
-  Provided,
-  Runtime,
-  Test
-}
-import sbt.librarymanagement.CrossVersion.{ binarySbtVersion, binaryScalaVersion, partialVersion }
+import sbt.librarymanagement.Artifact.{DocClassifier, SourceClassifier}
+import sbt.librarymanagement.Configurations.{Compile, CompilerPlugin, IntegrationTest, Provided, Runtime, Test}
+import sbt.librarymanagement.CrossVersion.{binarySbtVersion, binaryScalaVersion, partialVersion}
 import sbt.librarymanagement._
 import sbt.librarymanagement.ivy._
 import sbt.librarymanagement.syntax._
 import sbt.nio.FileStamp
 import sbt.nio.Keys._
 import sbt.nio.file.syntax._
-import sbt.nio.file.{ FileTreeView, Glob, RecursiveGlob }
+import sbt.nio.file.{FileTreeView, Glob, RecursiveGlob}
 import sbt.nio.Watch
 import sbt.std.TaskExtra._
-import sbt.testing.{ AnnotatedFingerprint, Framework, Runner, SubclassFingerprint }
+import sbt.testing.{AnnotatedFingerprint, Framework, Runner, SubclassFingerprint}
 import sbt.util.CacheImplicits._
-import sbt.util.InterfaceUtil.{ t2, toJavaFunction => f1 }
+import sbt.util.InterfaceUtil.{t2, toJavaFunction => f1}
 import sbt.util._
 import sjsonnew._
 import sjsonnew.support.scalajson.unsafe.Converter
 import xsbti.compile.TastyFiles
-import xsbti.{ FileConverter, Position }
+import xsbti.{ArtifactInfo, FileConverter, Position}
 
 import scala.annotation.nowarn
 import scala.collection.immutable.ListMap
@@ -3019,6 +2992,18 @@ object Classpaths {
         )
       }
     )).value,
+    sbtScalaModuleInfo := {
+      val scalaProvider = appConfiguration.value.provider().scalaProvider()
+      ScalaModuleInfo(
+        scalaProvider.version(),
+        binaryScalaVersion(scalaProvider.version()),
+        Vector.empty,
+        filterImplicit = false,
+        checkExplicit = true,
+        overrideScalaVersion = true
+      ).withScalaOrganization(ArtifactInfo.ScalaOrganization)
+       .withScalaArtifacts(Vector(ScalaArtifacts.LibraryID, ScalaArtifacts.CompilerID, ScalaArtifacts.ReflectID))
+    },
     makePom / artifactPath := artifactPathSetting((makePom / artifact)).value,
     makePom / publishArtifact := publishMavenStyle.value && publishArtifact.value,
     makePom / artifact := Artifact.pom(moduleName.value),
@@ -3511,8 +3496,7 @@ object Classpaths {
       val pluginIDs: Vector[ModuleID] = pluginJars.flatMap(_ get moduleID.key)
       GetClassifiersModule(
         projectID.value,
-        // TODO: Should it be sbt's scalaModuleInfo?
-        scalaModuleInfo.value,
+        sbtScalaModuleInfo.value,
         sbtDependency.value +: pluginIDs,
         // sbt is now on Maven Central, so this has changed from sbt 0.13.
         Vector(Configurations.Default) ++ Configurations.default,

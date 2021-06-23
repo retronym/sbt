@@ -11,7 +11,7 @@ package server
 
 import java.net.URI
 import sbt.BasicCommandStrings.Shutdown
-import sbt.BuildPaths.{ configurationSources, projectStandard }
+import sbt.BuildPaths.{configurationSources, projectStandard}
 import sbt.BuildSyntax._
 import sbt.Def._
 import sbt.Keys._
@@ -23,13 +23,13 @@ import sbt.internal.bsp._
 import sbt.internal.langserver.ErrorCodes
 import sbt.internal.protocol.JsonRpcRequestMessage
 import sbt.internal.util.Attributed
-import sbt.internal.util.complete.{ Parser, Parsers }
+import sbt.internal.util.complete.{Parser, Parsers}
 import sbt.librarymanagement.CrossVersion.binaryScalaVersion
-import sbt.librarymanagement.{ Configuration, ScalaArtifacts }
+import sbt.librarymanagement.{Artifact, Configuration, Configurations, GetClassifiersModule, ModuleID, ScalaArtifacts, ScalaModuleInfo}
 import sbt.std.TaskExtra
 import sbt.util.Logger
-import sjsonnew.shaded.scalajson.ast.unsafe.{ JNull, JValue }
-import sjsonnew.support.scalajson.unsafe.{ CompactPrinter, Converter, Parser => JsonParser }
+import sjsonnew.shaded.scalajson.ast.unsafe.{JNull, JValue}
+import sjsonnew.support.scalajson.unsafe.{CompactPrinter, Converter, Parser => JsonParser}
 
 import java.io.File
 import scala.collection.mutable
@@ -120,7 +120,7 @@ object BuildServerProtocol {
       // run the worker task concurrently
       Def.task {
         val items = bspBuildTargetSourcesItem.all(filter).value
-        val buildItems = workspace.builds.toVector.map {
+          val buildItems = workspace.builds.toVector.map {
           case (id, loadedBuildUnit) =>
             val base = loadedBuildUnit.localBase
             val sbtFiles = configurationSources(base)
@@ -141,7 +141,30 @@ object BuildServerProtocol {
       val workspace = bspWorkspace.value.filter(targets)
       val filter = ScopeFilter.in(workspace.scopes.values.toList)
       // run the worker task concurrently
+      val scalaProvider = appConfiguration.value.provider().scalaProvider()
       Def.task {
+        if (workspace.builds.nonEmpty) {
+          
+        }
+        workspace.builds.toList.map { case (id, loadedBuildUnit) =>
+          val pluginClasspath = loadedBuildUnit.unit.plugins.fullClasspath.toVector
+          val pluginJars = pluginClasspath.filter(_.data.isFile) // exclude directories: an approximation to whether they've been published
+          val pluginIDs: Vector[ModuleID] = pluginJars.flatMap(_ get moduleID.key)
+          val getClassifier: GetClassifiersModule = GetClassifiersModule(
+            projectID.value,
+            ScalaModuleInfo(scalaProvider.version(), binaryScalaVersion(scalaProvider.version()), Vector(),checkExplicit = false,
+              filterImplicit = false,
+              overrideScalaVersion = true
+            ).withScalaOrganization(scalaOrganization.value),
+            sbtDependency.value +: pluginIDs,
+            // sbt is now on Maven Central, so this has changed from sbt 0.13.
+            Vector(Configurations.Default) ++ Configurations.default,
+            Seq(Artifact.SourceClassifier)
+          )
+          getClassifier.
+          DependencySourcesResult(items.toVector)
+        }
+
         import sbt.internal.bsp.codec.JsonProtocol._
         val items = bspBuildTargetDependencySourcesItem.all(filter).value
         val result = DependencySourcesResult(items.toVector)

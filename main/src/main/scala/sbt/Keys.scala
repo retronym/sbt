@@ -525,6 +525,7 @@ object Keys {
   val projectDependencies = taskKey[Seq[ModuleID]]("Inter-project dependencies.").withRank(DTask)
   val ivyXML = settingKey[NodeSeq]("Defines inline Ivy XML for configuring dependency management.").withRank(BSetting)
   val scalaModuleInfo = settingKey[Option[ScalaModuleInfo]]("Configures how Scala dependencies are checked, filtered, and injected.").withRank(CSetting)
+  val sbtScalaModuleInfo = settingKey[ScalaModuleInfo]("The Scala dependencies used to run SBT.").withRank(CSetting)
   val ivyValidate = settingKey[Boolean]("Enables/disables Ivy validation of module metadata.").withRank(BSetting)
   val ivyLoggingLevel = settingKey[UpdateLogging]("The logging level for updating.").withRank(BSetting)
   val publishTo = taskKey[Option[Resolver]]("The resolver to publish to.").withRank(ASetting)
