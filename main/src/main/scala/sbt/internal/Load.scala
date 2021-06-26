@@ -1164,12 +1164,16 @@ private[sbt] object Load {
         val prod = (Configurations.Runtime / exportedProducts).value
         val cp = (Configurations.Runtime / fullClasspath).value
         val opts = (Configurations.Compile / scalacOptions).value
+        val managedSrcs = (Configurations.Compile / unmanagedSources).value
+        val unmanagedSrcs = (Configurations.Compile / managedSources).value
         PluginData(
           removeEntries(cp, prod),
           prod,
           Some(fullResolvers.value.toVector),
           Some(update.value),
-          opts
+          opts,
+          unmanagedSrcs,
+          managedSrcs
         )
       },
       scalacOptions += "-Wconf:cat=unused-nowarn:s",
