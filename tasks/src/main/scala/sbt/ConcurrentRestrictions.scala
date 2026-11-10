@@ -48,14 +48,21 @@ trait ConcurrentRestrictions:
 
   /** Reverses what `hold` retained. The default is a no-op, matching the default `hold`. */
   def unhold(g: G, a: TaskId[?]): G = g
+
+  /**
+   * Tasks with equal keys are interchangeable to `add`: if `restrictionKey(a) == restrictionKey(b)`
+   * then `valid(add(g, a)) == valid(add(g, b))` for all `g`. Together with law 5, this lets the
+   * completion service try only the oldest of the pending tasks that share a key. The default, the
+   * task itself, claims nothing.
+   */
+  private[sbt] def restrictionKey(a: TaskId[?]): Any = a
 end ConcurrentRestrictions
 
 private[sbt] sealed trait CancelSentinels:
   def cancelSentinels(): Unit
 
-import java.util.{ LinkedList, Queue }
+import java.util.{ ArrayDeque, ArrayList, Comparator, HashMap, PriorityQueue }
 import java.util.concurrent.{ Executor, Executors, ExecutorCompletionService }
-import annotation.tailrec
 
 object ConcurrentRestrictions:
   private val completionServices = new java.util.WeakHashMap[CompletionService, Boolean]
@@ -79,6 +86,7 @@ object ConcurrentRestrictions:
       def add(g: G, a: TaskId[?]) = ()
       def remove(g: G, a: TaskId[?]) = ()
       def valid(g: G) = true
+      override private[sbt] def restrictionKey(a: TaskId[?]): Any = ()
 
   def limitTotal(i: Int): ConcurrentRestrictions =
     assert(i >= 1, "Maximum must be at least 1 (was " + i + ")")
@@ -88,6 +96,7 @@ object ConcurrentRestrictions:
       def add(g: Int, a: TaskId[?]) = g + 1
       def remove(g: Int, a: TaskId[?]) = g - 1
       def valid(g: Int) = g <= i
+      override private[sbt] def restrictionKey(a: TaskId[?]): Any = ()
 
   /** A key object used for associating information with a task. */
   final case class Tag(name: String)
@@ -126,6 +135,7 @@ object ConcurrentRestrictions:
       // task no longer counts as running while its restriction is still enforced.
       override def hold(g: TagMap, a: TaskId[?]): TagMap = merge(remove(g, a), a.tags)(_ + _)
       override def unhold(g: TagMap, a: TaskId[?]): TagMap = merge(g, a.tags)(_ - _)
+      override private[sbt] def restrictionKey(a: TaskId[?]): Any = a.tags
 
   private def merge(m: TagMap, a: TaskId[?])(
       f: (Int, Int) => Int
@@ -215,8 +225,13 @@ object ConcurrentRestrictions:
       isSentinel: TaskId[?] => Boolean,
   ): CompletionService & CancelSentinels & AutoCloseable =
 
-    // Represents submitted work for a task.
-    final class Enqueue(val node: TaskId[?], val work: () => Completed)
+    /** Submitted work for a task; `seq` orders it among all pending tasks. */
+    final class Enqueue(val node: TaskId[?], val work: () => Completed, val seq: Long)
+
+    /** Pending tasks sharing a restriction key, oldest first. */
+    final class Blocked(val key: Any):
+      val queue = new ArrayDeque[Enqueue]
+      def headSeq: Long = queue.peekFirst.seq
 
     new CompletionService with CancelSentinels with AutoCloseable:
       completionServices.put(this, true)
@@ -236,9 +251,12 @@ object ConcurrentRestrictions:
 
       /**
        * Tasks that cannot be run yet because they cannot execute concurrently with the currently
-       * running tasks.
+       * running tasks, grouped by `tags.restrictionKey`.
        */
-      private val pending = new LinkedList[Enqueue]
+      private val pending = new HashMap[Any, Blocked]
+
+      /** The number of tasks ever added to `pending`, used to keep them in submission order. */
+      private var enqueued = 0L
 
       /** Span-tagged nodes whose tags remain held until Execute retires them. */
       private val spanning = IDSet.create[TaskId[?]]
@@ -266,10 +284,16 @@ object ConcurrentRestrictions:
             ()
           else
             if running == 0 && spanning.isEmpty then errorAddingToIdle()
-            pending.add(new Enqueue(node, work))
-            ()
+            enqueue(node, work)
         ()
       }
+
+      private def enqueue(node: TaskId[?], work: () => Completed): Unit =
+        val key = tags.restrictionKey(node)
+        val group = pending.computeIfAbsent(key, new Blocked(_))
+        group.queue.addLast(new Enqueue(node, work, enqueued))
+        enqueued += 1
+
       private def submitValid(node: TaskId[?], work: () => Completed): Unit =
         running += 1
         val wrappedWork = () =>
@@ -291,34 +315,41 @@ object ConcurrentRestrictions:
           applyTags(tags.hold(_, node))
           spanning += node
         else applyTags(tags.remove(_, node))
-        submitValid(new LinkedList)
+        submitPending()
 
       override def release(node: TaskId[?]): Unit = synchronized:
         if spanning -= node then
           applyTags(tags.unhold(_, node))
-          submitValid(new LinkedList)
+          submitPending()
 
       private def errorAddingToIdle() =
         warn("Invalid restriction: adding a node to an idle system must be allowed.")
 
-      /** Submits pending tasks that are now allowed to executed. */
-      @tailrec private def submitValid(tried: Queue[Enqueue]): Unit =
-        if pending.isEmpty then
-          if !tried.isEmpty then
-            if running == 0 && spanning.isEmpty then errorAddingToIdle()
-            pending.addAll(tried)
-            ()
-        else
-          val next = pending.remove()
-          val newState = tags.add(tagState, next.node)
-          if tags.valid(newState) then
-            tagState = newState
-            submitValid(next.node, next.work)
-            ()
-          else
-            tried.add(next)
-            ()
-          submitValid(tried)
+      /**
+       * Submits pending tasks that are now allowed to execute, trying them in submission order. Once
+       * a task is refused, every later task with the same restriction key would be too (law 5, as
+       * the state only grows during the scan), so its group is not tried again until the next
+       * completion. Each scan calls `tags.add` once per started task plus once per blocked group,
+       * rather than once per pending task.
+       */
+      private def submitPending(): Unit =
+        if !pending.isEmpty then
+          val heads = new PriorityQueue[Blocked](pending.size, Comparator.comparingLong(_.headSeq))
+          heads.addAll(pending.values)
+          val ready = new ArrayList[Enqueue]
+          while !heads.isEmpty do
+            val group = heads.poll()
+            val next = group.queue.peekFirst
+            val newState = tags.add(tagState, next.node)
+            if tags.valid(newState) then
+              tagState = newState
+              group.queue.removeFirst()
+              ready.add(next)
+              if group.queue.isEmpty then pending.remove(group.key)
+              else heads.add(group)
+          if !pending.isEmpty && ready.isEmpty && running == 0 && spanning.isEmpty then
+            errorAddingToIdle()
+          ready.forEach(e => submitValid(e.node, e.work))
 
       def take(): Completed =
         if closed.get then
